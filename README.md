@@ -88,12 +88,15 @@ The cleaning and segmentation processes are essential steps following thresholdi
 6. #### Results
     ![Original Image](images/segment_original.jpeg)
        *Original video frame image*
+   
     ![Thresholded Image](images/segment_thresholded.jpeg)
        *Thresholded video frame image*
+   
     ![Morphological Image](images/segment_morphological.jpeg)
        *Morphological video frame image*
+   
     ![Segmented Image](images/segment_segmented.jpeg)
        *Segmented video frame image*
 
-7. #### Conclusion
+8. #### Conclusion
     The cleaning and segmentation processes are integral to the VisionMac object recognition pipeline. By effectively removing noise and labeling distinct objects, these processes enhance the accuracy of subsequent feature extraction and classification steps.
