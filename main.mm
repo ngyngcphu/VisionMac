@@ -3,11 +3,13 @@
 
 #include <Cocoa/Cocoa.h>
 #import <UniformTypeIdentifiers/UniformTypeIdentifiers.h>
+#include <fstream>
 #include <iostream>
 #include <string>
 #include <vector>
 
 #include "display.h"
+#include "feature_extraction.h"
 #include "morphologicalOperations.h"
 #include "thresholding.h"
 
@@ -260,62 +262,191 @@ cv::Mat colorConnectedComponents(const cv::Mat &labels) {
   return colored;
 }
 
-// function to compute features
-// Structure to hold region features
-struct RegionFeatures {
-  cv::RotatedRect orientedBoundingBox;
-  cv::Vec2f axisOfLeastMoment;
-  float percentFilled;
-  float bboxAspectRatio;
+// Function to hold training database
+// Data structure to hold feature vectors and labels
+struct ObjectData {
+  std::string label;
+  RegionFeatures features;
+  float additionalFeatures[16];
 };
 
-RegionFeatures computeRegionFeatures(const cv::Mat &labels, int regionID) {
-  RegionFeatures features;
-  std::vector<cv::Point2f> regionPoints;
-  // Extract points belonging to the region
-  for (int i = 0; i < labels.rows; i++) {
-    for (int j = 0; j < labels.cols; j++) {
-      if (labels.at<int>(i, j) == regionID) {
-        regionPoints.push_back(cv::Point2f(
-            j, i)); // Note: (j, i) because j is x (column) and i is y (row)
-      }
+void saveObjectDB(const std::string &filename,
+                  const std::vector<ObjectData> &objectDB) {
+  std::ofstream outFile(filename, std::ios::out);
+  if (!outFile) {
+    std::cerr << "Error: Couldn't open file for writing: " << filename
+              << std::endl;
+    return;
+  }
+  // Write the number of objects
+  outFile << objectDB.size() << std::endl;
+  for (const ObjectData &data : objectDB) {
+    outFile << data.label << " ";
+    // Serialize the features:
+    outFile << data.features.orientedBoundingBox.center.x << " "
+            << data.features.orientedBoundingBox.center.y << " "
+            << data.features.orientedBoundingBox.size.width << " "
+            << data.features.orientedBoundingBox.size.height << " "
+            << data.features.orientedBoundingBox.angle << " "
+            << data.features.axisOfLeastMoment[0] << " "
+            << data.features.axisOfLeastMoment[1] << " "
+            << data.features.percentFilled << " "
+            << data.features.bboxAspectRatio << std::endl;
+
+    // Serialize the Hu Moments
+    for (int i = 0; i < 7; i++) {
+      outFile << data.features.huMoments[i] << " ";
+    }
+    outFile << std::endl;
+  }
+  outFile.close();
+  std::cout << "Saved object data to: " << filename << std::endl;
+}
+
+// function to load object database from a csv file
+bool loadObjectDBFromCSV(const std::string &filename,
+                         std::vector<ObjectData> &objectDB) {
+  std::ifstream inFile(filename, std::ios::in);
+  if (!inFile) {
+    std::cerr << "Error: Couldn't open file for reading: " << filename
+              << std::endl;
+    return false;
+  }
+  std::string line;
+  while (std::getline(inFile, line)) {
+    std::stringstream ss(line);
+    ObjectData data;
+    std::getline(ss, data.label, ','); // Get the label
+
+    // Deserialize the features:
+    ss >> data.features.orientedBoundingBox.center.x >>
+        data.features.orientedBoundingBox.center.y >>
+        data.features.orientedBoundingBox.size.width >>
+        data.features.orientedBoundingBox.size.height >>
+        data.features.orientedBoundingBox.angle >>
+        data.features.axisOfLeastMoment[0] >>
+        data.features.axisOfLeastMoment[1] >>
+        data.features.orthogonalVector[0] >>
+        data.features.orthogonalVector[1] >> data.features.percentFilled >>
+        data.features.bboxAspectRatio;
+
+    // Deserialize the additional features
+    for (int i = 0; i < 16; i++) {
+      ss >> data.additionalFeatures[i];
+    }
+
+    objectDB.push_back(data);
+  }
+  inFile.close();
+  std::cout << "Loaded object data from: " << filename << std::endl;
+  return true;
+}
+
+// Function to define the scaled Euclidean distance metric
+float scaledEuclideanDistance(const RegionFeatures &f1,
+                              const RegionFeatures &f2) {
+  float stdev_orientedBoundingBox_center_x = 1.0;
+  float stdev_orientedBoundingBox_center_y = 1.0;
+  float stdev_orientedBoundingBox_size_width = 1.0;
+  float stdev_orientedBoundingBox_size_height = 1.0;
+  float stdev_orientedBoundingBox_angle = 1.0;
+  float stdev_axisOfLeastMoment_0 = 1.0;
+  float stdev_axisOfLeastMoment_1 = 1.0;
+  float stdev_percentFilled = 1.0;
+  float stdev_bboxAspectRatio = 1.0;
+  float distance = 0.0;
+  float distance_center_x = std::pow(
+      (f1.orientedBoundingBox.center.x - f2.orientedBoundingBox.center.x) /
+          stdev_orientedBoundingBox_center_x,
+      2);
+  float distance_center_y = std::pow(
+      (f1.orientedBoundingBox.center.y - f2.orientedBoundingBox.center.y) /
+          stdev_orientedBoundingBox_center_y,
+      2);
+  float distance_width = std::pow(
+      (f1.orientedBoundingBox.size.width - f2.orientedBoundingBox.size.width) /
+          stdev_orientedBoundingBox_size_width,
+      2);
+  float distance_height = std::pow((f1.orientedBoundingBox.size.height -
+                                    f2.orientedBoundingBox.size.height) /
+                                       stdev_orientedBoundingBox_size_height,
+                                   2);
+  float distance_angle =
+      std::pow((f1.orientedBoundingBox.angle - f2.orientedBoundingBox.angle) /
+                   stdev_orientedBoundingBox_angle,
+               2);
+  float distance_axis_0 =
+      std::pow((f1.axisOfLeastMoment[0] - f2.axisOfLeastMoment[0]) /
+                   stdev_axisOfLeastMoment_0,
+               2);
+  float distance_axis_1 =
+      std::pow((f1.axisOfLeastMoment[1] - f2.axisOfLeastMoment[1]) /
+                   stdev_axisOfLeastMoment_1,
+               2);
+  float distance_filled =
+      std::pow((f1.percentFilled - f2.percentFilled) / stdev_percentFilled, 2);
+  float distance_aspect = std::pow(
+      (f1.bboxAspectRatio - f2.bboxAspectRatio) / stdev_bboxAspectRatio, 2);
+
+  float hausdorffDist = hausdorffDistance(f1.contour, f2.contour);
+  float weight_hausdorff = 1.0;
+  distance += weight_hausdorff * hausdorffDist;
+
+  distance += distance_center_x + distance_center_y + distance_width +
+              distance_height + distance_angle + distance_axis_0 +
+              distance_axis_1 + distance_filled + distance_aspect;
+
+  // Debug prints
+  std::cout << "Calculating distance..." << std::endl;
+  std::cout << "center_x distance: " << distance_center_x << std::endl;
+  std::cout << "center_y distance: " << distance_center_y << std::endl;
+  std::cout << "width distance: " << distance_width << std::endl;
+  std::cout << "height distance: " << distance_height << std::endl;
+  std::cout << "angle distance: " << distance_angle << std::endl;
+  std::cout << "axis_0 distance: " << distance_axis_0 << std::endl;
+  std::cout << "axis_1 distance: " << distance_axis_1 << std::endl;
+  std::cout << "percent filled distance: " << distance_filled << std::endl;
+  std::cout << "aspect ratio distance: " << distance_aspect << std::endl;
+  return std::sqrt(distance);
+}
+
+// Function to compare new object's feature vector to existing database using
+// the distance metric
+std::string classifyObject(const RegionFeatures &features,
+                           const std::vector<ObjectData> &objectDB) {
+  std::cout << "Classifying object..." << std::endl;
+  std::cout << "Number of objects in objectDB: " << objectDB.size()
+            << std::endl;
+  float minDistance = std::numeric_limits<float>::max();
+  std::string bestMatchLabel = "Unknown";
+
+  for (const ObjectData &data : objectDB) {
+    std::cout << "Comparing with object labeled: " << data.label << std::endl;
+    float distance = scaledEuclideanDistance(features, data.features);
+    std::cout << "Distance to " << data.label << ": " << distance << std::endl;
+    if (distance < minDistance) {
+      minDistance = distance;
+      bestMatchLabel = data.label;
     }
   }
-  // Skip if there are not enough points
-  if (regionPoints.size() < 2) {
-    std::cerr << "Error: Not enough distinct points in region " << regionID
-              << " to compute features." << std::endl;
-    return features;
-  }
-  try {
-    // Compute the oriented bounding box
-    features.orientedBoundingBox = cv::minAreaRect(regionPoints);
-    // Compute the aspect ratio of the oriented bounding box
-    features.bboxAspectRatio =
-        std::max(features.orientedBoundingBox.size.width,
-                 features.orientedBoundingBox.size.height) /
-        std::min(features.orientedBoundingBox.size.width,
-                 features.orientedBoundingBox.size.height);
-    // Compute percent filled within the oriented bounding box
-    cv::Mat mask = cv::Mat::zeros(labels.size(), CV_8U);
-    for (const auto &point : regionPoints) {
-      mask.at<uchar>(point.y, point.x) = 255;
-    }
-    cv::RotatedRect rect = features.orientedBoundingBox;
-    cv::Rect boundingBox = rect.boundingRect();
-    cv::Mat croppedMask = mask(boundingBox);
-    double areaFilled = cv::countNonZero(croppedMask);
-    double totalArea = boundingBox.width * boundingBox.height;
-    features.percentFilled = areaFilled / totalArea;
-  } catch (const cv::Exception &e) {
-    std::cerr << "Error computing features for region " << regionID << ": "
-              << e.what() << std::endl;
-  }
-  return features;
+  return bestMatchLabel;
 }
 
 int main() {
   [NSApplication sharedApplication]; // Initialize NSApplication
+  std::vector<ObjectData> objectDB;  // Initialize the objectDB vector
+
+  // load the existing database from a local csv:
+  if (loadObjectDBFromCSV("/database/images.csv", objectDB)) {
+    std::cout << "Number of objects in database: " << objectDB.size()
+              << std::endl;
+    for (const ObjectData &data : objectDB) {
+      std::cout << "Label: " << data.label << std::endl;
+    }
+  } else {
+    std::cerr << "Failed to load object database." << std::endl;
+    return -1; // Exit if we can't load the database
+  }
 
   // Open the default camera
   cv::VideoCapture cap(0);
@@ -326,10 +457,10 @@ int main() {
     return -1;
   }
 
-  // adjust the exposure and brightness of the external camera
+  // Adjust the exposure and brightness of the external camera
   cap.set(cv::CAP_PROP_AUTO_EXPOSURE, 0);
-  cap.set(cv::CAP_PROP_EXPOSURE, 3);
-  cap.set(cv::CAP_PROP_BRIGHTNESS, 70);
+  cap.set(cv::CAP_PROP_EXPOSURE, 0);
+  cap.set(cv::CAP_PROP_BRIGHTNESS, 20);
 
   // Create windows first
   cv::namedWindow("Original", cv::WINDOW_NORMAL);
@@ -347,16 +478,8 @@ int main() {
         break;
       }
 
-      // Debug output
-      std::cout << "Number of channels in 'original' image: "
-                << frame.channels() << std::endl;
-
       cv::Mat thresholded;
       dynamicThresholding(frame, thresholded);
-
-      // Debug output
-      std::cout << "Number of channels in 'thresholded' image: "
-                << thresholded.channels() << std::endl;
 
       cv::Mat cleaned;
       applyMorphologicalOperations(thresholded, cleaned);
@@ -364,23 +487,35 @@ int main() {
       // Ensure the cleaned image is strictly binary
       cv::threshold(cleaned, cleaned, 127, 255, cv::THRESH_BINARY);
 
-      // Debug output
-      std::cout << "Number of channels in 'cleaned' image: "
-                << cleaned.channels() << std::endl;
-
       cv::Mat stats;
-      cv::Mat labels = labelConnectedComponents(
-          cleaned, 500, stats); // 500 is a sample minimum size threshold
+      cv::Mat labels = labelConnectedComponents(cleaned, 500, stats);
       cv::Mat coloredLabels = colorConnectedComponents(labels);
-
-      std::cout << "Number of channels in 'coloredLabels' image: "
-                << coloredLabels.channels() << std::endl;
 
       // Compute features for each major region and visualize
       cv::Mat visualization = coloredLabels.clone();
       for (int i = 1; i < stats.rows;
            i++) { // Starting from 1 to skip the background
+        std::cout << "Processing region: " << i << std::endl;
         RegionFeatures features = computeRegionFeatures(labels, i);
+
+        // add label on top of the image
+        int x = static_cast<int>(features.orientedBoundingBox.center.x);
+        int y = static_cast<int>(features.orientedBoundingBox.center.y);
+        int textOffsetY = 10;
+        int textOffsetX = 40; // Increase this if necessary, depending on the
+                              // average width of the text
+        if (y - textOffsetY < 0) {
+          y = textOffsetY; // Reset y to the offset if it's too close to the top
+        }
+        if (x - textOffsetX < 0) {
+          x = textOffsetX; // Reset x to the offset if it's too close to the
+                           // left edge
+        }
+        std::string label = classifyObject(features, objectDB);
+        cv::putText(
+            visualization, label, cv::Point(x - textOffsetX, y - textOffsetY),
+            cv::FONT_HERSHEY_SIMPLEX, 0.5, cv::Scalar(255, 255, 255), 1);
+
         // Draw oriented bounding box
         cv::Point2f vertices[4];
         features.orientedBoundingBox.points(vertices);
@@ -388,23 +523,60 @@ int main() {
           cv::line(visualization, vertices[j], vertices[(j + 1) % 4],
                    cv::Scalar(0, 255, 0), 2);
         }
-        // Draw axis of least moment
+
+        // Draw axis of least moment (as a line centered on the bounding box's
+        // center)
         cv::Point2f center = features.orientedBoundingBox.center;
+
+        // Draw in both directions from the center
         cv::Point2f endpoint =
             center + 100 * cv::Point2f(features.axisOfLeastMoment[0],
                                        features.axisOfLeastMoment[1]);
-        cv::line(visualization, center, endpoint, cv::Scalar(0, 0, 255), 2);
+        cv::Point2f startpoint =
+            center - 100 * cv::Point2f(features.axisOfLeastMoment[0],
+                                       features.axisOfLeastMoment[1]);
+        cv::line(visualization, startpoint, endpoint, cv::Scalar(0, 0, 255), 2);
       }
 
-      // Displaying the original, thresholded, morphological, and segmented
-      // frames with features
+      // Displaying the image
       displayImages(frame, thresholded, cleaned, visualization);
 
-      int key = cv::waitKey(100);
-      if (key == 27) { // ESC key
+      // Inform the user about possible actions
+      std::cout << "Press 'n' to label the object, 's' to save the images, 'w' "
+                   "to save the database, or 'q' to quit."
+                << std::endl;
+
+      // Wait for a user keypress
+      int key = cv::waitKey(0);
+
+      if (key == 27 || key == 113) { // ESC || 'q' key
         break;
+      } else if (key == 'n' || key == 'N') {
+        std::string label;
+        std::cout << "Enter the label for the current object: ";
+        std::cin >> label;
+        std::cin.ignore(std::numeric_limits<std::streamsize>::max(),
+                        '\n'); // Clear the newline from the buffer
+
+        // storing features from the lasrgest region
+        int largestArea = 0;
+        int largestLabel = 0;
+        for (int i = 1; i < stats.rows; i++) {
+          int area = stats.at<int>(i, cv::CC_STAT_AREA);
+          if (area > largestArea) {
+            largestArea = area;
+            largestLabel = i;
+          }
+        }
+
+        RegionFeatures features = computeRegionFeatures(labels, largestLabel);
+        objectDB.push_back({label, features});
+        std::cout << "Stored features for object labeled: " << label
+                  << std::endl;
       } else if (key == 115) { // 's' key
         displayAndOptionallySave(frame, thresholded, cleaned, visualization);
+      } else if (key == 119) { // 'w' key
+        saveObjectDB("/database/images.csv", objectDB);
       } else if (cv::getWindowProperty("Original", cv::WND_PROP_VISIBLE) < 1 ||
                  cv::getWindowProperty("Thresholded", cv::WND_PROP_VISIBLE) <
                      1 ||
