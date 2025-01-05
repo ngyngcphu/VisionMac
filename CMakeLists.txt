@@ -14,7 +14,7 @@ find_package(OpenCV REQUIRED)
 include_directories(${OpenCV_INCLUDE_DIRS})
 
 # Add your source file
-add_executable(main main.mm display.mm thresholding.mm)
+add_executable(main main.mm display.mm thresholding.mm morphologicalOperations.mm)
 
 # Link OpenCV libraries to your executable
 target_link_libraries(main 
