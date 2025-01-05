@@ -7,6 +7,7 @@ This project develops an Object Recognition (OR) system on macOS designed to ide
 
 ## Project Report
 ### I. Thresholded Objects
+
 The thresholding process is a crucial step in the VisionMac project, which aims to identify objects within video footage. This section of the report will delve into the technical details of the thresholding algorithm implemented in the project, highlighting its role in the overall object recognition system.
 
 1. #### Thresholding Process Overview
@@ -46,3 +47,53 @@ The thresholding process is a crucial step in the VisionMac project, which aims 
 
 5. #### Conclusion
     The thresholding algorithm implemented in VisionMac is a vital component of the object recognition pipeline. By dynamically adjusting the threshold based on image content, it provides a reliable method for object isolation, paving the way for subsequent feature extraction and classification steps.
+
+### II. Cleaned Objects and Segmentation
+
+The cleaning and segmentation processes are essential steps following thresholding in the VisionMac project. These steps further refine the binary images to enhance object isolation and prepare them for feature extraction and classification.
+
+1. #### Cleaning Process Overview
+    The cleaning process involves morphological operations that help in removing noise and small artifacts from the thresholded images. This is achieved using erosion and dilation techniques, which are implemented in the [morphologicalOperations.mm](morphologicalOperations.mm) file.
+
+2. #### Morphological Operations
+    The [applyMorphologicalOperations](morphologicalOperations.mm) function is responsible for cleaning the thresholded images. It involves the following steps:
+
+    - ##### Erosion
+      Erosion is applied to remove small white noise and detach connected objects. This operation uses a kernel to erode away the boundaries of the foreground object.
+    - ##### Dilation
+      Following erosion, dilation is applied to restore the eroded parts of the object. This operation uses a kernel to dilate the boundaries of the foreground object, ensuring that the object remains intact while noise is minimized.
+
+3. #### Segmentation Process Overview
+    After cleaning, the segmentation process labels connected components in the binary image. This step is crucial for identifying distinct objects within the frame.
+
+4. #### Connected Components Labeling
+    The [labelConnectedComponents](main.mm) function labels each connected component in the cleaned image. It involves:
+
+    - ##### Inversion and Labeling
+      The binary image is inverted, and connected components analysis is performed to label each distinct object. The function also filters out components smaller than a specified minimum size to reduce false positives.
+    - ##### Coloring
+      The [colorConnectedComponents](main.mm) function assigns a unique color to each labeled component, making it easier to visualize and distinguish between different objects.
+
+5. #### Implementation Details
+    The implementation of the cleaning and segmentation processes is encapsulated in the [morphologicalOperations.mm](morphologicalOperations.mm) and [main.mm](main.mm) files. The key functions involved are:
+    ```cpp
+    // Applies erosion and dilation to clean the thresholded image.
+    void applyMorphologicalOperations(const cv::Mat &src, cv::Mat &dst);
+    ```
+    ```cpp
+    // Labels connected components in the cleaned image.
+    cv::Mat labelConnectedComponents(const cv::Mat &src, int minSize, cv::Mat &stats);
+    ```
+
+6. #### Results
+    ![Original Image](images/segment_original.jpeg)
+       *Original video frame image*
+    ![Thresholded Image](images/segment_thresholded.jpeg)
+       *Thresholded video frame image*
+    ![Morphological Image](images/segment_morphological.jpeg)
+       *Morphological video frame image*
+    ![Segmented Image](images/segment_segmented.jpeg)
+       *Segmented video frame image*
+
+7. #### Conclusion
+    The cleaning and segmentation processes are integral to the VisionMac object recognition pipeline. By effectively removing noise and labeling distinct objects, these processes enhance the accuracy of subsequent feature extraction and classification steps.
