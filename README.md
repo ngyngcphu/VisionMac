@@ -100,3 +100,45 @@ The cleaning and segmentation processes are essential steps following thresholdi
 
 8. #### Conclusion
     The cleaning and segmentation processes are integral to the VisionMac object recognition pipeline. By effectively removing noise and labeling distinct objects, these processes enhance the accuracy of subsequent feature extraction and classification steps.
+
+### III. Feature Computation
+
+The feature computation process is a critical step in the VisionMac project, following the segmentation of objects. This step involves extracting meaningful features from each identified object, which are then used for classification and recognition.
+
+1. #### Feature Extraction Overview
+    Feature computation involves analyzing the segmented objects to extract various attributes that can uniquely identify them. These features are crucial for distinguishing between different objects and are used in the classification phase.
+
+2. #### Region Features
+    The computeRegionFeatures function is responsible for calculating features for each labeled region. It involves the following steps:
+
+    - ##### Oriented Bounding Box
+      The oriented bounding box is computed for each region, providing a minimal enclosing rectangle that can rotate to fit the object. This helps in understanding the object's orientation and size.
+    - ##### Axis of Least Moment
+      The axis of least moment is calculated, representing the direction in which the object has the least rotational inertia. This feature is useful for understanding the object's shape and orientation.
+    - ##### Percent Filled
+      This feature measures the proportion of the bounding box area that is filled by the object. It provides insight into the object's density and compactness.
+    - ##### Bounding Box Aspect Ratio
+      The aspect ratio of the bounding box is computed, which helps in identifying the object's shape characteristics.
+
+3. #### Implementation Details
+    The implementation of the feature computation is encapsulated in the [main.mm](main.mm) file. The key functions involved are:
+    ```cpp
+    // Computes features for a given region identified by its label.
+    RegionFeatures computeRegionFeatures(const cv::Mat &labels, int regionID);
+    ```
+
+4. #### Results
+    ![Original Image](images/bounding_original.jpeg)
+       *Original video frame image*
+   
+    ![Thresholded Image](images/bounding_thresholded.jpeg)
+       *Thresholded video frame image*
+   
+    ![Morphological Image](images/bounding_morphological.jpeg)
+       *Morphological video frame image*
+   
+    ![Segmented Image](images/bounding_segmented.jpeg)
+       *Segmented video frame image with features*
+
+5. #### Conclusion
+    The feature computation process in VisionMac is a vital component of the object recognition pipeline. By extracting detailed features from each object, the system can accurately classify and recognize objects in real-time, enhancing the overall effectiveness of the object recognition system.
