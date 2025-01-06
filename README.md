@@ -142,3 +142,107 @@ The feature computation process is a critical step in the VisionMac project, fol
 
 5. #### Conclusion
     The feature computation process in VisionMac is a vital component of the object recognition pipeline. By extracting detailed features from each object, the system can accurately classify and recognize objects in real-time, enhancing the overall effectiveness of the object recognition system.
+
+### IV. Training Data Collection
+
+The training data collection process is a crucial component of the VisionMac project, enabling the system to build a database of known objects for classification. This section details the implementation of training data collection and management.
+
+1. #### Training Process Overview
+    The training process involves capturing and processing images of known objects, extracting their features, and storing them in a database for later comparison. This process is implemented in the [process_train_data.mm](process_train_data.mm) file.
+
+2. #### Data Collection Implementation
+    The training data collection process involves several key steps:
+
+    - ##### Image Acquisition
+      ```cpp
+          // Get all image files from train_data directory
+      std::vector<cv::String> filenames;
+      cv::glob(path_str + "/*_*.jpg", filenames);
+      ```
+      Training images are stored in the `train_data` directory with a specific naming convention: `image_1_label.jpg`, where "label" identifies the object.
+
+    - ##### Image Processing Pipeline
+      Each training image undergoes the same processing pipeline as live video frames:
+      ```cpp
+      // Process image
+      cv::Mat thresholded;
+      dynamicThresholding(frame, thresholded);
+      
+      cv::Mat cleaned;
+      applyMorphologicalOperations(thresholded, cleaned);
+      
+      cv::Mat stats;
+      cv::Mat labels = labelConnectedComponents(cleaned, 500, stats);
+      ```
+3. #### Feature Extraction and Storage
+    The system extracts features from the largest connected component in each training image:
+
+    - ##### Feature Computation
+      ```cpp
+      RegionFeatures features = computeRegionFeatures(labels, largestLabel);
+      ```
+      Features include oriented bounding box parameters, axis of least moment, percent filled, and aspect ratio.
+
+    - ##### Database Storage
+      ```cpp
+      struct ObjectData {
+        std::string label;
+        RegionFeatures features;
+        float additionalFeatures[16];
+      };
+      ```
+      Features are stored in a database along with their corresponding labels.
+
+4. #### Database Management
+    The system includes functions for managing the object database:
+
+    - ##### Saving Database
+      ```cpp
+      void saveObjectDB(const std::string &filename, const std::vector<ObjectData> &objectDB) {
+      // Writes object data to CSV file
+      // Format: label, features...
+      }
+      ```
+      The database is saved in CSV format for persistence between sessions.
+
+    - ##### Loading Database
+      ```cpp
+      bool loadObjectDBFromCSV(const std::string &filename, std::vector<ObjectData> &objectDB) {
+      // Reads object data from CSV file
+      // Populates objectDB vector
+      }
+      ```
+      The database can be loaded from a CSV file when the system starts.
+
+5. #### Interactive Training
+    The system supports interactive training during runtime:
+    ```cpp
+    if (key == 'n' || key == 'N') {
+    std::string label;
+    std::cout << "Enter the label for the current object: ";
+    std::cin >> label;
+    
+    RegionFeatures features = computeRegionFeatures(labels, largestLabel);
+    objectDB.push_back({label, features});
+    }
+    ```
+    Users can add new objects to the database by:
+    - Capturing an image of the object
+    - Pressing 'n' to enter a label
+    - The system automatically extracts features and adds them to the database
+
+6. #### Results
+    The training process creates a comprehensive database of object features:
+    ```
+    Database contents:
+    Label: object1
+    Features:
+    Center: (x, y)
+    Width: w
+    Height: h
+    Angle: θ
+    --------------------------------
+    ```
+
+7. #### Conclusion
+    The training data collection system provides a robust and flexible way to build and maintain a database of known objects. The combination of automated feature extraction and interactive training allows for easy expansion of the system's object recognition capabilities.
